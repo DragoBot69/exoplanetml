@@ -76,9 +76,9 @@ with st.sidebar:
     sleep_time = st.slider('Sleep time', 0, 3, 0)
 
 # Model building process
-if uploaded_file or example_data: 
+if uploaded_file or example_data:
     with st.status("Running ...", expanded=True) as status:
-    
+
         st.write("Loading data ...")
         time.sleep(sleep_time)
 
@@ -86,17 +86,17 @@ if uploaded_file or example_data:
         time.sleep(sleep_time)
         X = df.iloc[:,:-1]
         y = df.iloc[:,-1]
-            
+
         st.write("Splitting data ...")
         time.sleep(sleep_time)
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=(100-parameter_split_size)/100, random_state=parameter_random_state)
-    
+
         st.write("Model training ...")
         time.sleep(sleep_time)
 
         if parameter_max_features == 'all':
             parameter_max_features = None
-        
+
         rf = RandomForestRegressor(
                 n_estimators=parameter_n_estimators,
                 max_features=parameter_max_features,
@@ -107,12 +107,12 @@ if uploaded_file or example_data:
                 bootstrap=parameter_bootstrap,
                 oob_score=parameter_oob_score)
         rf.fit(X_train, y_train)
-        
+
         st.write("Applying model to make predictions ...")
         time.sleep(sleep_time)
         y_train_pred = rf.predict(X_train)
         y_test_pred = rf.predict(X_test)
-            
+
         st.write("Evaluating performance metrics ...")
         time.sleep(sleep_time)
         train_mse = mean_squared_error(y_train, y_train_pred)
@@ -127,7 +127,7 @@ if uploaded_file or example_data:
             'Test MSE': [test_mse],
             'Test R2': [test_r2]
         }).round(3)
-        
+
     status.update(label="Status", state="complete", expanded=False)
 
     # Display data info
@@ -137,7 +137,7 @@ if uploaded_file or example_data:
     col[1].metric(label="No. of X variables", value=X.shape[1], delta="")
     col[2].metric(label="No. of Training samples", value=X_train.shape[0], delta="")
     col[3].metric(label="No. of Test samples", value=X_test.shape[0], delta="")
-    
+
     with st.expander('Initial dataset', expanded=True):
         st.dataframe(df, height=210, use_container_width=True)
     with st.expander('Train split', expanded=False):
@@ -162,7 +162,7 @@ if uploaded_file or example_data:
     feature_names = list(X.columns)
     forest_importances = pd.Series(importances, index=feature_names)
     df_importance = forest_importances.reset_index().rename(columns={'index': 'feature', 0: 'value'})
-    
+
     bars = alt.Chart(df_importance).mark_bar(size=40).encode(
              x='value:Q',
              y=alt.Y('feature:N', sort='-x')
@@ -182,16 +182,16 @@ if uploaded_file or example_data:
     s_y_train_pred = pd.Series(y_train_pred, name='predicted').reset_index(drop=True)
     df_train = pd.DataFrame(data=[s_y_train, s_y_train_pred], index=None).T
     df_train['class'] = 'train'
-        
+
     s_y_test = pd.Series(y_test, name='actual').reset_index(drop=True)
     s_y_test_pred = pd.Series(y_test_pred, name='predicted').reset_index(drop=True)
     df_test = pd.DataFrame(data=[s_y_test, s_y_test_pred], index=None).T
     df_test['class'] = 'test'
-    
+
     df_prediction = pd.concat([df_train, df_test], axis=0)
-    
+
     prediction_col = st.columns((2, 0.2, 3))
-    
+
     # Display dataframe
     with prediction_col[0]:
         st.dataframe(df_prediction, height=320, use_container_width=True)
@@ -220,7 +220,7 @@ if uploaded_file or example_data:
     # Apply to new dataset
     st.header('Apply Trained Model to New Dataset')
     new_file = st.file_uploader("Upload a new CSV for prediction", type=["csv"], key='predict')
-    
+
     if new_file is not None:
         new_data = pd.read_csv(new_file)
 
@@ -233,18 +233,18 @@ if uploaded_file or example_data:
 
         # Check if the new dataset has the required input features
         missing_features = set(model_features).difference(new_data.columns)
-        
+
         if len(missing_features) == 0:
             # Reorder the columns in the new dataset to match the model's expected input features
             new_X = new_data[model_features]
-            
+
             # Predict using the loaded model
             predictions = saved_model.predict(new_X)
-            
+
             # Add the predictions as a new column to the new dataset
             new_data['Predictions'] = predictions
             st.write(new_data.head())
-            
+
             # Allow download of the new dataset with predictions
             csv_pred = convert_df(new_data)
             st.download_button(
@@ -253,6 +253,34 @@ if uploaded_file or example_data:
                 file_name='predictions.csv',
                 mime='text/csv'
             )
+            # Sorting to find top 5 most habitable predicted exoplanets
+            top5 = new_data.nlargest(5, 'Predictions')
+            top5['Top 5'] = True  # New column to identify them
+
+            # Marking top 5 in the full prediction DataFrame
+            new_data = new_data.copy()
+            new_data['Top 5'] = new_data.index.isin(top5.index)
+
+            st.header('Visualize Parameters vs Predicted ESI')
+
+            # Loop through all features except 'Predictions' and 'Top 5'
+            for feature in new_data.columns:
+                if feature not in ['Predictions', 'Top 5']:
+                    chart = alt.Chart(new_data).mark_circle(size=60).encode(
+                        x=alt.X(f'{feature}:Q', title=feature),
+                        y=alt.Y('Predictions:Q', title='Predicted ESI'),
+                        color=alt.condition(
+                            alt.datum['Top 5'],
+                            alt.value('red'),
+                            alt.value('blue')
+                        ),
+                        tooltip=[feature, 'Predictions']
+                    ).properties(
+                        title=f'{feature} vs Predicted ESI',
+                        height=350
+                    )
+                    st.altair_chart(chart, use_container_width=True)
+
         else:
             # Show an error if the dataset is missing any required features
             st.error("The dataset is missing the following features: " + ", ".join(missing_features))
