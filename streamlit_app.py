@@ -266,6 +266,7 @@ if uploaded_file or example_data:
             # Loop through all features except 'Predictions' and 'Top 5'
             for feature in new_data.columns:
                 if feature not in ['Predictions', 'Top 5']:
+                    # Create scatter plot
                     chart = alt.Chart(new_data).mark_circle(size=60).encode(
                         x=alt.X(f'{feature}:Q', title=feature),
                         y=alt.Y('Predictions:Q', title='Predicted ESI'),
@@ -280,6 +281,26 @@ if uploaded_file or example_data:
                         height=350
                     )
                     st.altair_chart(chart, use_container_width=True)
+
+                    # Automatically generate interpretation
+                    corr_value = new_data[feature].corr(new_data['Predictions'])
+
+                    if pd.isna(corr_value):
+                        interpretation = f"No relationship found between {feature} and Predicted ESI."
+                    elif corr_value > 0.5:
+                        interpretation = f"There is a strong **positive correlation**: as **{feature}** increases, so does **habitability**."
+                    elif corr_value > 0.2:
+                        interpretation = f"There is a mild **positive correlation** between **{feature}** and habitability."
+                    elif corr_value < -0.5:
+                        interpretation = f"There is a strong **negative correlation**: as **{feature}** increases, **habitability** tends to decrease."
+                    elif corr_value < -0.2:
+                        interpretation = f"There is a mild **negative correlation** between **{feature}** and habitability."
+                    else:
+                        interpretation = f"There is **little to no correlation** between **{feature}** and habitability."
+
+                    # Show interpretation under the graph
+                    st.markdown(f"**Interpretation:** {interpretation}")
+
 
         else:
             # Show an error if the dataset is missing any required features
